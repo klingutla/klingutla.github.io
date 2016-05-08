@@ -1,0 +1,156 @@
+---
+title: "Prediction Assignment"
+author: "Coursera Student"
+date: "May 6, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+## Objective
+The goal of this project is to predict the manner in which they did the exercise as shown by the "classe" variable in the training set.
+
+## Loading Data
+
+```{r}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+
+##Download Data
+trainingDataSet <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("NA","#DIV/0!",""))
+testDataSet <- read.csv(url("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), na.strings=c("NA","#DIV/0!",""))
+```
+
+## Cleaning and Partitioning Data
+Let us clean the datasets by removing columns with a lot of NA  and the first 7 variables.
+
+````{r}
+features <- names(testDataSet[,colSums(is.na(testDataSet)) == 0])[8:59]
+
+# Only use features used in testing cases.
+trainingDataSet <- trainingDataSet[,c(features,"classe")]
+testDataSet <- testDataSet[,c(features,"problem_id")]
+````
+
+Here are the dimensions of the cleaned up training dataset
+````{r}
+dim(trainingDataSet); 
+````
+
+Here are the dimensions of the cleaned up test dataset
+````{r}
+dim(testDataSet);
+````
+
+Let's partition the training dataset with 60% of test cases going in to training and the rest 40% in to testing.
+
+````{r}
+partition <- createDataPartition(y=trainingDataSet$classe, p=0.6, list=FALSE)
+training1 <- trainingDataSet[partition, ]; 
+testing1 <- trainingDataSet[-partition, ];
+dim(training1); 
+dim(testing1);
+````
+
+## Building Random Forest Model
+
+````{r}
+set.seed(12345)
+
+modFitRandomForest <- randomForest(classe ~ ., data = training1, method = "rf", importance = T, trControl = trainControl(method = "cv", classProbs=TRUE,savePredictions=TRUE,allowParallel=TRUE, number = 10))
+
+plot(modFitRandomForest)
+````
+
+## Predicting with Random Forest Model
+
+````{r}
+prediction <- predict(modFitRandomForest, testing1, type = "class")
+confusionMatrix(prediction, testing1$classe)
+````
+
+You can see that the random forest model gave an excellent accuracy of 99.3%.
+
+## Building Decision Tree Model
+
+````{r}
+set.seed(12345)
+modFitDecisionTree <- rpart(classe ~ ., data = training1, method="class", control = rpart.control(method = "cv", number = 10))
+fancyRpartPlot(modFitDecisionTree)
+````
+
+## Predicting with Decision Tree Model
+
+````{r}
+set.seed(12345)
+
+prediction <- predict(modFitDecisionTree, testing1, type = "class")
+confusionMatrix(prediction, testing1$classe)
+````
+
+## Building Boosting Model
+
+````{r}
+modFitBoostModel <- train(classe ~ ., method = "gbm", data = training1,
+                    verbose = F,
+                    trControl = trainControl(method = "cv", number = 10))
+
+modFitBoostModel
+````
+
+## Predicting with Boosting Model
+
+````{r}
+prediction <- predict(modFitBoostModel, testing1)
+confusionMatrix(prediction, testing1$classe)
+````
+
+
+## Conclusion
+Out off the 3 models used for analysis, Random Forest Model proved to be the most accurate model for this training data. We will use the Random Forest Model on testing data.
+
+## Predicting with Random Forest on Testing Data
+
+````{r}
+predictionRandomForest <- predict(modFitRandomForest, testDataSet)
+predictionRandomForest
+````
+
+## Submission
+
+Here is the function to generate files with predictions using Random Forest Model for submission
+
+````{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictionRandomForest)
+````
+
